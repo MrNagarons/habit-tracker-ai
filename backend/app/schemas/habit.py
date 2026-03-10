@@ -44,6 +44,8 @@ class HabitResponse(BaseModel):
     is_active: bool
     created_at: datetime
     current_streak: int = 0
+    best_streak: int = 0
+    completed_today: bool = False
     completion_rate: float = 0.0
 
     model_config = {"from_attributes": True}

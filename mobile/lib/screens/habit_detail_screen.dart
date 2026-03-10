@@ -19,17 +19,19 @@ class HabitDetailScreen extends ConsumerStatefulWidget {
 class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
   List<HabitLog> _logs = [];
   bool _loading = true;
+  late Habit _habit;
 
   @override
   void initState() {
     super.initState();
+    _habit = widget.habit;
     _loadLogs();
   }
 
   Future<void> _loadLogs() async {
     try {
       final api = ref.read(apiServiceProvider);
-      final logs = await api.getHabitLogs(widget.habit.id, days: 60);
+      final logs = await api.getHabitLogs(_habit.id, days: 60);
       setState(() {
         _logs = logs;
         _loading = false;
@@ -39,9 +41,22 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
     }
   }
 
+  Future<void> _toggleToday() async {
+    try {
+      await ref.read(habitsProvider.notifier).toggleHabit(
+          _habit.id, !_habit.completedToday);
+      // Reload habit data
+      final api = ref.read(apiServiceProvider);
+      final habits = await api.getHabits();
+      final updated = habits.firstWhere((h) => h.id == _habit.id, orElse: () => _habit);
+      setState(() => _habit = updated);
+      await _loadLogs();
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
-    final habit = widget.habit;
+    final habit = _habit;
 
     return Scaffold(
       appBar: AppBar(
@@ -60,6 +75,34 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  // Today toggle button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: _toggleToday,
+                      icon: Icon(habit.completedToday
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked),
+                      label: Text(
+                        habit.completedToday
+                            ? 'Выполнено сегодня ✅'
+                            : 'Отметить выполненным',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: habit.completedToday
+                            ? AppTheme.successColor
+                            : AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
                   // Stats header
                   Row(
                     children: [
@@ -91,6 +134,13 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
                                 ),
                                 const SizedBox(width: 16),
                                 _MiniStat(
+                                  icon: Icons.emoji_events,
+                                  value: '${habit.bestStreak}',
+                                  label: 'лучшая',
+                                  color: Colors.amber,
+                                ),
+                                const SizedBox(width: 16),
+                                _MiniStat(
                                   icon: Icons.pie_chart,
                                   value:
                                       '${habit.completionRate.toStringAsFixed(0)}%',
@@ -104,7 +154,53 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
+
+                  // Habit info card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Информация',
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 12),
+                          _InfoRow(
+                            icon: Icons.repeat,
+                            label: 'Частота',
+                            value: _cooldownLabel(habit.cooldownDays),
+                          ),
+                          if (habit.targetTime != null)
+                            _InfoRow(
+                              icon: Icons.schedule,
+                              label: 'Время выполнения',
+                              value: habit.targetTime!,
+                            ),
+                          if (habit.reminderTime != null)
+                            _InfoRow(
+                              icon: Icons.notifications_outlined,
+                              label: 'Напоминание',
+                              value: habit.reminderTime!,
+                            ),
+                          if (habit.description.isNotEmpty)
+                            _InfoRow(
+                              icon: Icons.description_outlined,
+                              label: 'Описание',
+                              value: habit.description,
+                            ),
+                          _InfoRow(
+                            icon: Icons.calendar_today,
+                            label: 'Создана',
+                            value:
+                                '${habit.createdAt.day}.${habit.createdAt.month.toString().padLeft(2, '0')}.${habit.createdAt.year}',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
                   // Calendar heatmap (last 30 days)
                   const Text('Последние 30 дней',
@@ -166,7 +262,7 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
         final completed = logDates[key];
         Color color;
         if (completed == true) {
-          color = widget.habit.colorValue;
+          color = _habit.colorValue;
         } else if (completed == false) {
           color = AppTheme.errorColor.withOpacity(0.3);
         } else {
@@ -266,7 +362,7 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
       builder: (_) => AlertDialog(
         title: const Text('Удалить привычку?'),
         content: Text(
-            'Привычка "${widget.habit.name}" и вся история будут удалены.'),
+            'Привычка "${_habit.name}" и вся история будут удалены.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -275,7 +371,7 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
             onPressed: () async {
               await ref
                   .read(habitsProvider.notifier)
-                  .deleteHabit(widget.habit.id);
+                  .deleteHabit(_habit.id);
               if (context.mounted) {
                 Navigator.pop(context); // dialog
                 Navigator.pop(context); // detail screen
@@ -303,6 +399,21 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen> {
       'other': '📌 Другое',
     };
     return labels[category] ?? category;
+  }
+
+  String _cooldownLabel(int days) {
+    switch (days) {
+      case 1:
+        return 'Каждый день';
+      case 2:
+        return 'Через день';
+      case 3:
+        return 'Раз в 3 дня';
+      case 7:
+        return 'Раз в неделю';
+      default:
+        return 'Раз в $days дн.';
+    }
   }
 }
 
@@ -370,3 +481,37 @@ class _LogTile extends StatelessWidget {
   }
 }
 
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.textSecondary),
+          const SizedBox(width: 10),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 13, color: AppTheme.textSecondary)),
+          const Spacer(),
+          Flexible(
+            child: Text(value,
+                textAlign: TextAlign.end,
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500)),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -336,9 +336,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           }
 
           final todayCompleted =
-              habits.where((h) => h.currentStreak > 0).length;
+              habits.where((h) => h.completedToday).length;
           final progress =
               habits.isEmpty ? 0.0 : todayCompleted / habits.length;
+
+          // Sort: uncompleted first, then completed
+          final sortedHabits = List<Habit>.from(habits)
+            ..sort((a, b) {
+              if (a.completedToday == b.completedToday) return 0;
+              return a.completedToday ? 1 : -1;
+            });
 
           return RefreshIndicator(
             onRefresh: () =>
@@ -346,39 +353,106 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 16),
               children: [
-                // Progress header
+                // Progress header with circular indicator
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        'Сегодня: $todayCompleted из ${habits.length}',
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
+                      SizedBox(
+                        width: 64,
+                        height: 64,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 6,
+                              backgroundColor:
+                                  AppTheme.primaryColor.withOpacity(0.15),
+                              color: progress >= 1.0
+                                  ? AppTheme.successColor
+                                  : AppTheme.primaryColor,
+                            ),
+                            Center(
+                              child: Text(
+                                '${(progress * 100).toInt()}%',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: progress >= 1.0
+                                      ? AppTheme.successColor
+                                      : AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 8,
-                          backgroundColor:
-                              AppTheme.primaryColor.withOpacity(0.15),
-                          color: AppTheme.primaryColor,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$todayCompleted из ${habits.length} выполнено',
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              progress >= 1.0
+                                  ? '🎉 Отличная работа! Всё выполнено!'
+                                  : progress >= 0.5
+                                      ? '💪 Хороший прогресс, продолжай!'
+                                      : 'Начни свой день правильно!',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: progress >= 1.0
+                                    ? AppTheme.successColor
+                                    : AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Habit list
-                ...habits.map((habit) => HabitCard(
+                // Celebration card when 100%
+                if (progress >= 1.0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Card(
+                      color: AppTheme.successColor.withOpacity(0.1),
+                      child: const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Text('🏆', style: TextStyle(fontSize: 32)),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Все привычки на сегодня выполнены! Ты молодец! 🚀',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                if (progress >= 1.0) const SizedBox(height: 8),
+                // Habit list (uncompleted first)
+                ...sortedHabits.map((habit) => HabitCard(
                       habit: habit,
-                      isCompletedToday: habit.currentStreak > 0,
+                      isCompletedToday: habit.completedToday,
                       onToggle: () {
                         ref.read(habitsProvider.notifier).toggleHabit(
-                            habit.id, habit.currentStreak == 0);
+                            habit.id, !habit.completedToday);
                       },
                       onTap: () {
                         Navigator.push(

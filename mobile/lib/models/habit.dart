@@ -15,6 +15,8 @@ class Habit {
   final bool isActive;
   final DateTime createdAt;
   final int currentStreak;
+  final int bestStreak;
+  final bool completedToday;
   final double completionRate;
 
   Habit({
@@ -32,6 +34,8 @@ class Habit {
     required this.isActive,
     required this.createdAt,
     this.currentStreak = 0,
+    this.bestStreak = 0,
+    this.completedToday = false,
     this.completionRate = 0.0,
   });
 
@@ -51,6 +55,8 @@ class Habit {
       isActive: json['is_active'] ?? true,
       createdAt: DateTime.parse(json['created_at']),
       currentStreak: json['current_streak'] ?? 0,
+      bestStreak: json['best_streak'] ?? 0,
+      completedToday: json['completed_today'] ?? false,
       completionRate: (json['completion_rate'] ?? 0.0).toDouble(),
     );
   }

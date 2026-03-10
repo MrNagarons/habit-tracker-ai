@@ -44,6 +44,43 @@ async def _compute_streak(db: AsyncSession, habit_id: int, cooldown_days: int = 
     return streak
 
 
+async def _is_completed_today(db: AsyncSession, habit_id: int) -> bool:
+    """Check if habit was completed today."""
+    today = date.today()
+    result = await db.execute(
+        select(HabitLog).where(
+            HabitLog.habit_id == habit_id,
+            HabitLog.date == today,
+            HabitLog.completed == True,
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _compute_best_streak(db: AsyncSession, habit_id: int, cooldown_days: int = 1) -> int:
+    """Compute the best (longest) streak ever for a habit."""
+    result = await db.execute(
+        select(HabitLog)
+        .where(HabitLog.habit_id == habit_id, HabitLog.completed == True)
+        .order_by(HabitLog.date.asc())
+    )
+    logs = result.scalars().all()
+    if not logs:
+        return 0
+
+    best = 1
+    current = 1
+    for i in range(1, len(logs)):
+        diff = (logs[i].date - logs[i - 1].date).days
+        if diff == cooldown_days:
+            current += 1
+            best = max(best, current)
+        elif diff > cooldown_days:
+            current = 1
+        # if diff < cooldown_days, skip (duplicate day, etc.)
+    return best
+
+
 async def _completion_rate(db: AsyncSession, habit_id: int, days: int = 30) -> float:
     """Compute completion rate over the last N days."""
     since = date.today() - timedelta(days=days)
@@ -88,6 +125,8 @@ async def create_habit(
 
     response = HabitResponse.model_validate(habit)
     response.current_streak = 0
+    response.best_streak = 0
+    response.completed_today = False
     response.completion_rate = 0.0
     return response
 
@@ -105,7 +144,9 @@ async def get_habits(
     responses = []
     for habit in habits:
         resp = HabitResponse.model_validate(habit)
-        resp.current_streak = await _compute_streak(db, habit.id)
+        resp.current_streak = await _compute_streak(db, habit.id, habit.cooldown_days)
+        resp.best_streak = await _compute_best_streak(db, habit.id, habit.cooldown_days)
+        resp.completed_today = await _is_completed_today(db, habit.id)
         resp.completion_rate = await _completion_rate(db, habit.id)
         responses.append(resp)
     return responses
@@ -125,7 +166,9 @@ async def get_habit(
         raise HTTPException(status_code=404, detail="Habit not found")
 
     resp = HabitResponse.model_validate(habit)
-    resp.current_streak = await _compute_streak(db, habit.id)
+    resp.current_streak = await _compute_streak(db, habit.id, habit.cooldown_days)
+    resp.best_streak = await _compute_best_streak(db, habit.id, habit.cooldown_days)
+    resp.completed_today = await _is_completed_today(db, habit.id)
     resp.completion_rate = await _completion_rate(db, habit.id)
     return resp
 
@@ -152,7 +195,9 @@ async def update_habit(
     await db.refresh(habit)
 
     resp = HabitResponse.model_validate(habit)
-    resp.current_streak = await _compute_streak(db, habit.id)
+    resp.current_streak = await _compute_streak(db, habit.id, habit.cooldown_days)
+    resp.best_streak = await _compute_best_streak(db, habit.id, habit.cooldown_days)
+    resp.completed_today = await _is_completed_today(db, habit.id)
     resp.completion_rate = await _completion_rate(db, habit.id)
     return resp
 
