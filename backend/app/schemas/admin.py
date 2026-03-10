@@ -44,6 +44,9 @@ class PlatformAnalyticsResponse(BaseModel):
     new_users_7d: int
     new_habits_7d: int
     top_categories: list[dict]  # [{category, count}]
+    total_friendships: int = 0
+    total_achievements: int = 0
+    total_notifications: int = 0
 
 
 class AdminChatMessage(BaseModel):

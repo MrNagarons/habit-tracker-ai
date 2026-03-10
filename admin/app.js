@@ -3,9 +3,9 @@
  * Vanilla JS SPA for platform management.
  */
 
-const API_BASE = window.location.port === '8080'
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:8000/api'
-    : `${window.location.protocol}//${window.location.hostname}:8000/api`;
+    : 'https://rcsthcs.click/api';
 
 let token = localStorage.getItem('admin_token');
 let currentTab = 'analytics';
@@ -121,6 +121,9 @@ async function loadAnalytics() {
             ${statCard('🆕', data.new_habits_7d, 'Новых привычек / 7д')}
             ${statCard('📝', data.total_logs, 'Всего записей')}
             ${statCard('🏆', data.completion_rate + '%', 'Выполнение')}
+            ${statCard('🤝', data.total_friendships || 0, 'Дружб')}
+            ${statCard('🏅', data.total_achievements || 0, 'Достижений')}
+            ${statCard('🔔', data.total_notifications || 0, 'Уведомлений')}
         `;
 
         const catEl = document.getElementById('top-categories');

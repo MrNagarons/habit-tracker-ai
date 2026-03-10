@@ -34,3 +34,44 @@ class RecommendationResponse(BaseModel):
     tips: list[str]
     motivation_message: str
 
+
+class CategoryStat(BaseModel):
+    category: str
+    count: int
+    completion_rate: float
+
+
+class HourStat(BaseModel):
+    hour: int
+    count: int
+
+
+class DetailedAnalyticsResponse(BaseModel):
+    """Расширенная аналитика с heatmap, категориями, часами и трендами."""
+    # Месячный heatmap: {date_str: bool}
+    heatmap: dict[str, bool | None]
+    # Статистика по категориям
+    category_stats: list[CategoryStat]
+    # Распределение по часам
+    hourly_distribution: list[HourStat]
+    # Тренд за 90 дней (% выполнения по неделям)
+    trend_90d: list[float]
+    # Общая статистика
+    total_completed: int
+    total_logged: int
+    days_active: int
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    title: str
+    body: str
+    habit_id: int | None = None
+    is_read: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+

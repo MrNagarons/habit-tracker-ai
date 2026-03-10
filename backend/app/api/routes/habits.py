@@ -11,6 +11,7 @@ from app.schemas.habit import (
     HabitLogCreate, HabitLogResponse,
 )
 from app.api.auth_utils import get_current_user
+from app.services.achievement_checker import check_and_unlock
 
 router = APIRouter(prefix="/habits", tags=["habits"])
 
@@ -80,6 +81,10 @@ async def create_habit(
     db.add(habit)
     await db.commit()
     await db.refresh(habit)
+
+    # Check achievements (first_habit, five_habits)
+    await check_and_unlock(db, current_user.id)
+    await db.commit()
 
     response = HabitResponse.model_validate(habit)
     response.current_streak = 0
@@ -201,6 +206,11 @@ async def log_habit(
             existing.completed_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(existing)
+
+        # Check achievements after log update
+        await check_and_unlock(db, current_user.id)
+        await db.commit()
+
         return existing
 
     log = HabitLog(
@@ -210,6 +220,11 @@ async def log_habit(
     db.add(log)
     await db.commit()
     await db.refresh(log)
+
+    # Check achievements after logging
+    await check_and_unlock(db, current_user.id)
+    await db.commit()
+
     return log
 
 

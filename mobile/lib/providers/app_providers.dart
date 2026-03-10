@@ -4,6 +4,10 @@ import '../services/api_service.dart';
 import '../models/user.dart';
 import '../models/habit.dart';
 import '../models/chat_message.dart';
+import '../models/achievement.dart';
+import '../models/friendship.dart';
+import '../models/notification_item.dart';
+import '../models/detailed_analytics.dart';
 
 // ─── API Service singleton ───
 final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
@@ -198,5 +202,100 @@ final chatProvider =
     StateNotifierProvider<ChatNotifier, List<ChatMessage>>((ref) {
   final api = ref.watch(apiServiceProvider);
   return ChatNotifier(api);
+});
+
+// ─── Friends ───
+class FriendsNotifier extends StateNotifier<AsyncValue<List<FriendInfo>>> {
+  final ApiService _api;
+
+  FriendsNotifier(this._api) : super(const AsyncValue.loading());
+
+  Future<void> loadFriends() async {
+    state = const AsyncValue.loading();
+    try {
+      final friends = await _api.getFriends();
+      state = AsyncValue.data(friends);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> sendRequest(int friendId) async {
+    await _api.sendFriendRequest(friendId);
+  }
+
+  Future<void> acceptRequest(int friendshipId) async {
+    await _api.acceptFriendRequest(friendshipId);
+    await loadFriends();
+  }
+
+  Future<void> rejectRequest(int friendshipId) async {
+    await _api.rejectFriendRequest(friendshipId);
+  }
+
+  Future<void> removeFriend(int friendId) async {
+    await _api.removeFriend(friendId);
+    await loadFriends();
+  }
+}
+
+final friendsProvider =
+    StateNotifierProvider<FriendsNotifier, AsyncValue<List<FriendInfo>>>((ref) {
+  final api = ref.watch(apiServiceProvider);
+  return FriendsNotifier(api);
+});
+
+final friendRequestsProvider = FutureProvider<List<FriendInfo>>((ref) async {
+  final api = ref.watch(apiServiceProvider);
+  return await api.getFriendRequests();
+});
+
+// ─── Achievements ───
+final achievementsProvider = FutureProvider<List<Achievement>>((ref) async {
+  final api = ref.watch(apiServiceProvider);
+  return await api.getAchievements();
+});
+
+// ─── Notifications ───
+class NotificationsNotifier extends StateNotifier<AsyncValue<List<NotificationItem>>> {
+  final ApiService _api;
+
+  NotificationsNotifier(this._api) : super(const AsyncValue.loading());
+
+  Future<void> load() async {
+    try {
+      final items = await _api.getNotifications();
+      state = AsyncValue.data(items);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> markRead(int id) async {
+    await _api.markNotificationRead(id);
+    await load();
+  }
+
+  Future<void> markAllRead() async {
+    await _api.markAllNotificationsRead();
+    await load();
+  }
+}
+
+final notificationsProvider =
+    StateNotifierProvider<NotificationsNotifier, AsyncValue<List<NotificationItem>>>((ref) {
+  final api = ref.watch(apiServiceProvider);
+  return NotificationsNotifier(api);
+});
+
+final unreadCountProvider = FutureProvider<int>((ref) async {
+  final api = ref.watch(apiServiceProvider);
+  return await api.getUnreadNotificationCount();
+});
+
+// ─── Detailed Analytics ───
+final detailedAnalyticsProvider = FutureProvider<DetailedAnalytics>((ref) async {
+  final api = ref.watch(apiServiceProvider);
+  return await api.getDetailedAnalytics();
 });
 

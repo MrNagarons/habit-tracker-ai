@@ -1,7 +1,6 @@
 """
 Notification Scheduler — генерирует персонализированные напоминания.
-Сейчас: хранит в БД для polling из Flutter.
-Потом: отправка через Firebase Cloud Messaging.
+Записывает уведомления в БД (модель Notification).
 """
 from datetime import datetime, date, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -9,23 +8,42 @@ from sqlalchemy import select
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.models.habit import Habit
 from app.models.habit_log import HabitLog
-from app.ml.pattern_analyzer import PatternAnalyzer
+from app.models.notification import Notification
 from app.config import get_settings
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-# In-memory notification store (for local dev; migrate to push in production)
-pending_notifications: dict[int, list[dict]] = {}  # user_id -> [notifications]
+async def _add_notification_db(db: AsyncSession, user_id: int, type_: str,
+                                title: str, body: str, habit_id: int | None = None):
+    """Add a notification to DB, avoiding duplicates for same habit+type today."""
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    existing = await db.execute(
+        select(Notification).where(
+            Notification.user_id == user_id,
+            Notification.type == type_,
+            Notification.habit_id == habit_id,
+            Notification.created_at >= today_start,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return  # Already notified today
+
+    notification = Notification(
+        user_id=user_id,
+        type=type_,
+        title=title,
+        body=body,
+        habit_id=habit_id,
+    )
+    db.add(notification)
 
 
 async def check_and_generate_reminders():
     """Periodic task: check habits and generate reminders."""
     settings = get_settings()
-    engine = create_async_engine(
-        settings.DATABASE_URL,
-    )
+    engine = create_async_engine(settings.DATABASE_URL)
     async_session = async_sessionmaker(engine, expire_on_commit=False)
 
     async with async_session() as db:
@@ -48,52 +66,35 @@ async def check_and_generate_reminders():
             if result.scalar_one_or_none():
                 continue  # Already done
 
-            # Check if it's time to remind
+            # Check if it's time to remind (target_time based)
             if habit.target_time:
                 try:
                     target_hour, target_min = map(int, habit.target_time.split(":"))
                     target_dt = now.replace(hour=target_hour, minute=target_min)
-                    # Remind 15 minutes before target time
                     if now >= target_dt - timedelta(minutes=15) and now <= target_dt + timedelta(minutes=30):
-                        _add_notification(habit.user_id, {
-                            "type": "reminder",
-                            "habit_id": habit.id,
-                            "title": f"Время для '{habit.name}'!",
-                            "body": f"Не забудь выполнить привычку. У тебя отличная серия!",
-                            "timestamp": now.isoformat(),
-                        })
+                        await _add_notification_db(
+                            db, habit.user_id, "reminder",
+                            f"Время для '{habit.name}'!",
+                            f"Не забудь выполнить привычку. У тебя отличная серия!",
+                            habit.id,
+                        )
                 except (ValueError, AttributeError):
                     pass
 
             # Late in the day reminder (after 20:00) for habits without target time
             if not habit.target_time and now.hour >= 20:
-                _add_notification(habit.user_id, {
-                    "type": "evening_reminder",
-                    "habit_id": habit.id,
-                    "title": f"Ещё не поздно!",
-                    "body": f"Привычка '{habit.name}' ждёт тебя сегодня.",
-                    "timestamp": now.isoformat(),
-                })
+                await _add_notification_db(
+                    db, habit.user_id, "evening_reminder",
+                    "Ещё не поздно!",
+                    f"Привычка '{habit.name}' ждёт тебя сегодня.",
+                    habit.id,
+                )
+
+        await db.commit()
 
     await engine.dispose()
     logger.info(f"Reminder check completed at {now}")
 
-
-def _add_notification(user_id: int, notification: dict):
-    """Add notification to pending store."""
-    if user_id not in pending_notifications:
-        pending_notifications[user_id] = []
-
-    # Avoid duplicates
-    existing_ids = {n.get("habit_id") for n in pending_notifications[user_id]}
-    if notification.get("habit_id") not in existing_ids:
-        pending_notifications[user_id].append(notification)
-
-
-def get_user_notifications(user_id: int) -> list[dict]:
-    """Get and clear pending notifications for a user."""
-    notifications = pending_notifications.pop(user_id, [])
-    return notifications
 
 
 def create_scheduler() -> AsyncIOScheduler:

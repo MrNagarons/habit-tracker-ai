@@ -24,3 +24,7 @@ class User(Base):
     habits = relationship("Habit", back_populates="user", cascade="all, delete-orphan")
     chat_messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("UserActivity", back_populates="user", cascade="all, delete-orphan")
+    achievements = relationship("Achievement", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    sent_friendships = relationship("Friendship", foreign_keys="[Friendship.user_id]", back_populates="user", cascade="all, delete-orphan")
+    received_friendships = relationship("Friendship", foreign_keys="[Friendship.friend_id]", back_populates="friend", cascade="all, delete-orphan")

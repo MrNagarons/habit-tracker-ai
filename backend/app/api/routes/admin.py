@@ -13,6 +13,9 @@ from app.models.user import User
 from app.models.habit import Habit
 from app.models.habit_log import HabitLog
 from app.models.chat_message import ChatMessage
+from app.models.friendship import Friendship, FriendshipStatus
+from app.models.achievement import Achievement
+from app.models.notification import Notification
 from app.schemas.admin import (
     AdminUserResponse,
     AdminHabitResponse,
@@ -445,6 +448,21 @@ async def get_platform_analytics(
         {"category": cat, "count": count} for cat, count in cat_result.all()
     ]
 
+    # Additional stats
+    total_friendships = (
+        await db.execute(
+            select(func.count(Friendship.id)).where(Friendship.status == FriendshipStatus.ACCEPTED)
+        )
+    ).scalar() or 0
+
+    total_achievements = (
+        await db.execute(select(func.count(Achievement.id)))
+    ).scalar() or 0
+
+    total_notifications = (
+        await db.execute(select(func.count(Notification.id)))
+    ).scalar() or 0
+
     return PlatformAnalyticsResponse(
         total_users=total_users,
         active_users=active_users,
@@ -455,6 +473,9 @@ async def get_platform_analytics(
         new_users_7d=new_users_7d,
         new_habits_7d=new_habits_7d,
         top_categories=top_categories,
+        total_friendships=total_friendships,
+        total_achievements=total_achievements,
+        total_notifications=total_notifications,
     )
 
 

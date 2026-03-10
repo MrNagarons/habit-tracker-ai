@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import date, timedelta, datetime
+from collections import Counter
 from app.db.database import get_db
 from app.models.user import User
 from app.models.habit import Habit
 from app.models.habit_log import HabitLog
-from app.schemas.analytics import AnalyticsResponse
+from app.schemas.analytics import (
+    AnalyticsResponse, DetailedAnalyticsResponse,
+    CategoryStat, HourStat,
+)
 from app.api.auth_utils import get_current_user
 from app.api.routes.habits import _compute_streak, _completion_rate
 
@@ -92,7 +97,6 @@ async def get_analytics(
     if completed_logs:
         hours = [l.completed_at.hour for l in completed_logs if l.completed_at]
         if hours:
-            from collections import Counter
             most_common_hour = Counter(hours).most_common(1)[0][0]
             optimal_time = f"{most_common_hour:02d}:00"
 
@@ -109,4 +113,151 @@ async def get_analytics(
         optimal_time=optimal_time,
         weekly_completion=weekly,
     )
+
+
+@router.get("/detailed", response_model=DetailedAnalyticsResponse)
+async def get_detailed_analytics(
+    days: int = 90,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Extended analytics: heatmap, categories, hourly distribution, 90-day trends."""
+    today = date.today()
+    since = today - timedelta(days=days)
+
+    # Get user habits
+    result = await db.execute(
+        select(Habit).where(Habit.user_id == current_user.id)
+    )
+    all_habits = result.scalars().all()
+    active_ids = [h.id for h in all_habits if h.is_active]
+
+    # All logs in period
+    result = await db.execute(
+        select(HabitLog).where(
+            HabitLog.habit_id.in_([h.id for h in all_habits]),
+            HabitLog.date >= since,
+        )
+    )
+    all_logs = result.scalars().all()
+
+    # --- Heatmap (last N days) ---
+    heatmap: dict[str, bool | None] = {}
+    log_by_date: dict[str, list[HabitLog]] = {}
+    for log in all_logs:
+        ds = log.date.isoformat()
+        log_by_date.setdefault(ds, []).append(log)
+
+    for i in range(days):
+        day = today - timedelta(days=i)
+        ds = day.isoformat()
+        day_logs = log_by_date.get(ds, [])
+        if not day_logs:
+            heatmap[ds] = None  # No data
+        else:
+            completed = all(l.completed for l in day_logs)
+            heatmap[ds] = completed
+
+    # --- Category stats ---
+    category_map: dict[str, dict] = {}
+    for h in all_habits:
+        cat = h.category
+        if cat not in category_map:
+            category_map[cat] = {"count": 0, "total_logs": 0, "completed_logs": 0}
+        category_map[cat]["count"] += 1
+        habit_logs = [l for l in all_logs if l.habit_id == h.id]
+        category_map[cat]["total_logs"] += len(habit_logs)
+        category_map[cat]["completed_logs"] += sum(1 for l in habit_logs if l.completed)
+
+    category_stats = [
+        CategoryStat(
+            category=cat,
+            count=data["count"],
+            completion_rate=round(
+                data["completed_logs"] / data["total_logs"] * 100, 1
+            ) if data["total_logs"] > 0 else 0.0,
+        )
+        for cat, data in category_map.items()
+    ]
+
+    # --- Hourly distribution ---
+    hour_counts = Counter()
+    for log in all_logs:
+        if log.completed and log.completed_at:
+            hour_counts[log.completed_at.hour] += 1
+
+    hourly_distribution = [
+        HourStat(hour=h, count=c)
+        for h, c in sorted(hour_counts.items())
+    ]
+
+    # --- 90-day trend (weekly completion %) ---
+    trend_90d = []
+    num_weeks = days // 7
+    for w in range(num_weeks):
+        week_start = today - timedelta(days=(w + 1) * 7)
+        week_end = today - timedelta(days=w * 7)
+        week_logs = [l for l in all_logs if week_start < l.date <= week_end]
+        if week_logs:
+            rate = sum(1 for l in week_logs if l.completed) / len(week_logs) * 100
+            trend_90d.append(round(rate, 1))
+        else:
+            trend_90d.append(0.0)
+    trend_90d.reverse()  # oldest first
+
+    # --- Aggregate stats ---
+    total_completed = sum(1 for l in all_logs if l.completed)
+    total_logged = len(all_logs)
+    unique_dates = {l.date for l in all_logs}
+    days_active = len(unique_dates)
+
+    return DetailedAnalyticsResponse(
+        heatmap=heatmap,
+        category_stats=category_stats,
+        hourly_distribution=hourly_distribution,
+        trend_90d=trend_90d,
+        total_completed=total_completed,
+        total_logged=total_logged,
+        days_active=days_active,
+    )
+
+
+@router.get("/export")
+async def export_analytics_csv(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export all habit logs as CSV."""
+    import io
+    import csv
+
+    result = await db.execute(
+        select(HabitLog, Habit.name, Habit.category)
+        .join(Habit, HabitLog.habit_id == Habit.id)
+        .where(Habit.user_id == current_user.id)
+        .order_by(HabitLog.date.desc())
+    )
+    rows = result.all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Дата", "Привычка", "Категория", "Выполнена", "Время", "Заметка"])
+
+    for log, habit_name, category in rows:
+        writer.writerow([
+            log.date.isoformat(),
+            habit_name,
+            category,
+            "Да" if log.completed else "Нет",
+            log.completed_at.strftime("%H:%M") if log.completed_at else "",
+            log.note or "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=habits_export_{date.today()}.csv"},
+    )
+
 

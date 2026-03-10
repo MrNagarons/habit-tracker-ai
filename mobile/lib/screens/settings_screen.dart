@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../providers/app_providers.dart';
+import 'notifications_screen.dart';
+import 'achievements_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -10,6 +12,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final user = authState.user;
+    final unreadAsync = ref.watch(unreadCountProvider);
+    final unreadCount = unreadAsync.valueOrNull ?? 0;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
@@ -50,6 +54,36 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Quick actions
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Badge(
+                    isLabelVisible: unreadCount > 0,
+                    label: Text('$unreadCount'),
+                    child: const Icon(Icons.notifications_outlined,
+                        color: AppTheme.primaryColor),
+                  ),
+                  title: const Text('Уведомления'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.emoji_events_outlined,
+                      color: AppTheme.primaryColor),
+                  title: const Text('Достижения'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const AchievementsScreen())),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 24),

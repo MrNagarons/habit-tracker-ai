@@ -6,6 +6,10 @@ import '../models/user.dart';
 import '../models/habit.dart';
 import '../models/habit_log.dart';
 import '../models/chat_message.dart';
+import '../models/achievement.dart';
+import '../models/friendship.dart';
+import '../models/notification_item.dart';
+import '../models/detailed_analytics.dart';
 
 class ApiService {
   late final Dio _dio;
@@ -166,10 +170,91 @@ class ApiService {
 
   // ─── Notifications ───
 
-  Future<List<Map<String, dynamic>>> getNotifications() async {
-    final response = await _dio.get('/notifications/');
-    return (response.data['notifications'] as List)
-        .map((e) => Map<String, dynamic>.from(e))
+  Future<List<NotificationItem>> getNotifications({bool unreadOnly = false}) async {
+    final response = await _dio.get('/notifications/',
+        queryParameters: {'unread_only': unreadOnly});
+    return (response.data as List)
+        .map((e) => NotificationItem.fromJson(e))
         .toList();
+  }
+
+  Future<int> getUnreadNotificationCount() async {
+    final response = await _dio.get('/notifications/unread-count');
+    return response.data['unread_count'] ?? 0;
+  }
+
+  Future<void> markNotificationRead(int id) async {
+    await _dio.patch('/notifications/$id/read');
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    await _dio.patch('/notifications/read-all');
+  }
+
+  // ─── Friends ───
+
+  Future<List<UserSearchResult>> searchUsers(String query) async {
+    final response = await _dio.get('/friends/search',
+        queryParameters: {'q': query});
+    return (response.data as List)
+        .map((e) => UserSearchResult.fromJson(e))
+        .toList();
+  }
+
+  Future<void> sendFriendRequest(int friendId) async {
+    await _dio.post('/friends/request/$friendId');
+  }
+
+  Future<void> acceptFriendRequest(int friendshipId) async {
+    await _dio.post('/friends/accept/$friendshipId');
+  }
+
+  Future<void> rejectFriendRequest(int friendshipId) async {
+    await _dio.post('/friends/reject/$friendshipId');
+  }
+
+  Future<void> removeFriend(int friendId) async {
+    await _dio.delete('/friends/$friendId');
+  }
+
+  Future<List<FriendInfo>> getFriends() async {
+    final response = await _dio.get('/friends/');
+    return (response.data as List)
+        .map((e) => FriendInfo.fromJson(e))
+        .toList();
+  }
+
+  Future<List<FriendInfo>> getFriendRequests() async {
+    final response = await _dio.get('/friends/requests');
+    return (response.data as List)
+        .map((e) => FriendInfo.fromJson(e))
+        .toList();
+  }
+
+  Future<FriendProgress> getFriendProgress(int friendId) async {
+    final response = await _dio.get('/friends/$friendId/progress');
+    return FriendProgress.fromJson(response.data);
+  }
+
+  // ─── Achievements ───
+
+  Future<List<Achievement>> getAchievements() async {
+    final response = await _dio.get('/achievements/');
+    return (response.data as List)
+        .map((e) => Achievement.fromJson(e))
+        .toList();
+  }
+
+  // ─── Detailed Analytics ───
+
+  Future<DetailedAnalytics> getDetailedAnalytics({int days = 90}) async {
+    final response = await _dio.get('/analytics/detailed',
+        queryParameters: {'days': days});
+    return DetailedAnalytics.fromJson(response.data);
+  }
+
+  String getExportUrl() {
+    final baseUrl = kIsWeb ? AppConfig.baseUrlWeb : AppConfig.baseUrl;
+    return '$baseUrl/analytics/export';
   }
 }
