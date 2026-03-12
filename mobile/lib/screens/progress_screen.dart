@@ -376,16 +376,40 @@ class ProgressScreen extends ConsumerWidget {
                         message: tip,
                       )),
                   ...recs.recommendations.map((rec) => Card(
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: AppTheme.primaryColor,
-                            child:
-                                Icon(Icons.add, color: Colors.white),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => _showAddFromRecommendation(
+                              context, ref, rec['title'] ?? '', rec['reason'] ?? ''),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: AppTheme.primaryColor,
+                              child: Icon(Icons.add, color: Colors.white),
+                            ),
+                            title: Text(rec['title'] ?? ''),
+                            subtitle: Text(rec['reason'] ?? '',
+                                style: const TextStyle(fontSize: 12)),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add, size: 14,
+                                      color: AppTheme.primaryColor),
+                                  SizedBox(width: 2),
+                                  Text('Добавить',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
                           ),
-                          title: Text(rec['title'] ?? ''),
-                          subtitle: Text(rec['reason'] ?? '',
-                              style: const TextStyle(fontSize: 12)),
-                          trailing: const Icon(Icons.chevron_right),
                         ),
                       )),
                 ],
@@ -394,6 +418,190 @@ class ProgressScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showAddFromRecommendation(
+      BuildContext context, WidgetRef ref, String title, String reason) {
+    final nameController = TextEditingController(text: title);
+    String selectedCategory = 'health';
+    int cooldownDays = 1;
+
+    final categories = {
+      'health': '🏥 Здоровье',
+      'fitness': '💪 Фитнес',
+      'nutrition': '🥗 Питание',
+      'mindfulness': '🧘 Осознанность',
+      'productivity': '📋 Продуктивность',
+      'learning': '📚 Обучение',
+      'social': '👥 Социальное',
+      'sleep': '😴 Сон',
+      'finance': '💰 Финансы',
+      'other': '📌 Другое',
+    };
+
+    final cooldownOptions = {
+      1: 'Каждый день',
+      2: 'Через день',
+      3: 'Раз в 3 дня',
+      7: 'Раз в неделю',
+    };
+
+    // Try to guess category from title/reason
+    final lowerTitle = title.toLowerCase() + ' ' + reason.toLowerCase();
+    if (lowerTitle.contains('спорт') ||
+        lowerTitle.contains('фитнес') ||
+        lowerTitle.contains('зарядк')) {
+      selectedCategory = 'fitness';
+    } else if (lowerTitle.contains('книг') || lowerTitle.contains('учи')) {
+      selectedCategory = 'learning';
+    } else if (lowerTitle.contains('медита') || lowerTitle.contains('осознан')) {
+      selectedCategory = 'mindfulness';
+    } else if (lowerTitle.contains('еда') ||
+        lowerTitle.contains('вод') ||
+        lowerTitle.contains('питан')) {
+      selectedCategory = 'nutrition';
+    } else if (lowerTitle.contains('сон') || lowerTitle.contains('спать')) {
+      selectedCategory = 'sleep';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Добавить рекомендацию как привычку',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  if (reason.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lightbulb_outline,
+                              size: 18, color: AppTheme.primaryColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(reason,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary)),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Name (editable)
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Название привычки',
+                      prefixIcon: Icon(Icons.edit),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Category
+                  const Text('Категория',
+                      style: TextStyle(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: categories.entries.map((e) {
+                      final isSelected = selectedCategory == e.key;
+                      return ChoiceChip(
+                        label:
+                            Text(e.value, style: const TextStyle(fontSize: 12)),
+                        selected: isSelected,
+                        selectedColor: AppTheme.primaryColor.withOpacity(0.2),
+                        onSelected: (_) {
+                          setSheetState(() => selectedCategory = e.key);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Cooldown
+                  const Text('Частота выполнения',
+                      style: TextStyle(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: cooldownOptions.entries.map((e) {
+                      final isSelected = cooldownDays == e.key;
+                      return ChoiceChip(
+                        label:
+                            Text(e.value, style: const TextStyle(fontSize: 12)),
+                        selected: isSelected,
+                        selectedColor: AppTheme.primaryColor.withOpacity(0.2),
+                        onSelected: (_) {
+                          setSheetState(() => cooldownDays = e.key);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Submit
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        if (nameController.text.trim().isEmpty) return;
+                        await ref.read(habitsProvider.notifier).createHabit({
+                          'name': nameController.text.trim(),
+                          'category': selectedCategory,
+                          'frequency': 'daily',
+                          'cooldown_days': cooldownDays,
+                        });
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Привычка добавлена! ✅'),
+                              backgroundColor: AppTheme.successColor,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.check),
+                      label: const Text('Добавить привычку',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
     );
   }
 

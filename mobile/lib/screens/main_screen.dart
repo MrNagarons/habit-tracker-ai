@@ -7,7 +7,6 @@ import 'progress_screen.dart';
 import 'friends_screen.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
-import 'notifications_screen.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});

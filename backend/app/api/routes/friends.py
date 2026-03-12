@@ -51,9 +51,11 @@ async def search_users(
     )
     existing = existing_res.scalars().all()
     status_map = {}
+    friendship_id_map = {}
     for f in existing:
         other_id = f.friend_id if f.user_id == current_user.id else f.user_id
         status_map[other_id] = f.status
+        friendship_id_map[other_id] = f.id
 
     return [
         {
@@ -61,6 +63,7 @@ async def search_users(
             "username": u.username,
             "avatar_url": u.avatar_url,
             "friendship_status": status_map.get(u.id),
+            "friendship_id": friendship_id_map.get(u.id),
         }
         for u in users
     ]
@@ -123,6 +126,29 @@ async def send_friend_request(
 
     await db.commit()
     return {"message": f"Friend request sent to {friend.username}"}
+
+
+@router.delete("/request/{friendship_id}")
+async def cancel_friend_request(
+    friendship_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pending friend request that the current user sent."""
+    result = await db.execute(
+        select(Friendship).where(
+            Friendship.id == friendship_id,
+            Friendship.user_id == current_user.id,
+            Friendship.status == FriendshipStatus.PENDING,
+        )
+    )
+    friendship = result.scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+
+    await db.delete(friendship)
+    await db.commit()
+    return {"message": "Friend request cancelled"}
 
 
 @router.post("/accept/{friendship_id}")
@@ -261,6 +287,35 @@ async def get_friend_requests(
         {
             "friendship_id": f.id,
             "user_id": f.user_id,
+            "username": username,
+            "avatar_url": avatar_url,
+            "created_at": f.created_at.isoformat(),
+        }
+        for f, username, avatar_url in rows
+    ]
+
+
+@router.get("/sent-requests")
+async def get_sent_requests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get outgoing pending friend requests sent by current user."""
+    result = await db.execute(
+        select(Friendship, User.username, User.avatar_url)
+        .join(User, Friendship.friend_id == User.id)
+        .where(
+            Friendship.user_id == current_user.id,
+            Friendship.status == FriendshipStatus.PENDING,
+        )
+        .order_by(Friendship.created_at.desc())
+    )
+    rows = result.all()
+
+    return [
+        {
+            "friendship_id": f.id,
+            "user_id": f.friend_id,
             "username": username,
             "avatar_url": avatar_url,
             "created_at": f.created_at.isoformat(),

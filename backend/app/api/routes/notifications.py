@@ -3,7 +3,7 @@ Notifications routes — персистентные уведомления из 
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, delete
 from app.db.database import get_db
 from app.models.user import User
 from app.models.notification import Notification
@@ -84,4 +84,40 @@ async def mark_all_as_read(
     )
     await db.commit()
     return {"message": "All notifications marked as read"}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a single notification."""
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id,
+        )
+    )
+    notification = result.scalar_one_or_none()
+    if not notification:
+        return {"message": "Notification not found"}
+
+    await db.delete(notification)
+    await db.commit()
+    return {"message": "Notification deleted"}
+
+
+@router.delete("/")
+async def clear_all_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete all notifications for the current user."""
+    await db.execute(
+        delete(Notification).where(Notification.user_id == current_user.id)
+    )
+    await db.commit()
+    return {"message": "All notifications cleared"}
+
 

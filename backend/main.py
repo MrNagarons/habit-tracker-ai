@@ -5,10 +5,12 @@ Main FastAPI application entry point.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.db.database import init_db
 from app.api.routes import auth, habits, analytics, chat, recommendations, notifications, admin, friends, achievements
 from app.notifications.scheduler import create_scheduler
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +57,11 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(friends.router, prefix="/api")
 app.include_router(achievements.router, prefix="/api")
+
+# Serve uploaded avatars as static files
+avatar_dir = "/app/data/avatars"
+os.makedirs(avatar_dir, exist_ok=True)
+app.mount("/data/avatars", StaticFiles(directory=avatar_dir), name="avatars")
 
 
 @app.get("/")

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../models/friendship.dart';
 import '../providers/app_providers.dart';
+import 'friend_profile_screen.dart';
 
 class FriendsScreen extends ConsumerStatefulWidget {
   const FriendsScreen({super.key});
@@ -21,7 +22,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     Future.microtask(() {
       ref.read(friendsProvider.notifier).loadFriends();
     });
@@ -58,9 +59,11 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
           labelColor: AppTheme.primaryColor,
           unselectedLabelColor: AppTheme.textSecondary,
           indicatorColor: AppTheme.primaryColor,
+          labelStyle: const TextStyle(fontSize: 12),
           tabs: const [
             Tab(text: 'Друзья'),
-            Tab(text: 'Запросы'),
+            Tab(text: 'Входящие'),
+            Tab(text: 'Исходящие'),
             Tab(text: 'Поиск'),
           ],
         ),
@@ -69,7 +72,8 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
         controller: _tabController,
         children: [
           _buildFriendsList(),
-          _buildRequests(),
+          _buildIncomingRequests(),
+          _buildSentRequests(),
           _buildSearch(),
         ],
       ),
@@ -127,7 +131,14 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
                       .removeFriend(friends[i].userId);
                 }
               },
-              onTap: () => _showFriendProgress(friends[i]),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FriendProfileScreen(friend: friends[i]),
+                  ),
+                );
+              },
             ),
           );
         },
@@ -135,7 +146,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
     );
   }
 
-  Widget _buildRequests() {
+  Widget _buildIncomingRequests() {
     final requestsAsync = ref.watch(friendRequestsProvider);
 
     return RefreshIndicator(
@@ -159,8 +170,13 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: AppTheme.primaryColor,
-                    child: Text(req.username[0].toUpperCase(),
-                        style: const TextStyle(color: Colors.white)),
+                    backgroundImage: req.avatarUrl != null
+                        ? NetworkImage(req.avatarUrl!)
+                        : null,
+                    child: req.avatarUrl == null
+                        ? Text(req.username[0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white))
+                        : null,
                   ),
                   title: Text(req.username,
                       style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -187,6 +203,74 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
                         },
                       ),
                     ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSentRequests() {
+    final sentAsync = ref.watch(sentRequestsProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(sentRequestsProvider),
+      child: sentAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Ошибка: $e')),
+        data: (requests) {
+          if (requests.isEmpty) {
+            return const Center(
+              child: Text('Нет исходящих запросов',
+                  style: TextStyle(color: AppTheme.textSecondary)),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: requests.length,
+            itemBuilder: (ctx, i) {
+              final req = requests[i];
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppTheme.primaryColor,
+                    backgroundImage: req.avatarUrl != null
+                        ? NetworkImage(req.avatarUrl!)
+                        : null,
+                    child: req.avatarUrl == null
+                        ? Text(req.username[0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white))
+                        : null,
+                  ),
+                  title: Text(req.username,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Ожидает подтверждения',
+                      style: TextStyle(color: AppTheme.warningColor, fontSize: 12)),
+                  trailing: TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await ref.read(friendsProvider.notifier)
+                            .cancelRequest(req.friendshipId);
+                        ref.invalidate(sentRequestsProvider);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Запрос отозван')),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Ошибка: $e')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.close, size: 16, color: AppTheme.errorColor),
+                    label: const Text('Отозвать',
+                        style: TextStyle(fontSize: 12, color: AppTheme.errorColor)),
                   ),
                 ),
               );
@@ -236,8 +320,13 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: AppTheme.primaryColor,
-                          child: Text(user.username[0].toUpperCase(),
-                              style: const TextStyle(color: Colors.white)),
+                          backgroundImage: user.avatarUrl != null
+                              ? NetworkImage(user.avatarUrl!)
+                              : null,
+                          child: user.avatarUrl == null
+                              ? Text(user.username[0].toUpperCase(),
+                                  style: const TextStyle(color: Colors.white))
+                              : null,
                         ),
                         title: Text(user.username,
                             style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -259,9 +348,31 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
       );
     }
     if (user.friendshipStatus == 'pending') {
-      return const Chip(
-        label: Text('Ожидание', style: TextStyle(fontSize: 12)),
-        backgroundColor: Color(0xFFFFF3E0),
+      return TextButton.icon(
+        onPressed: user.friendshipId != null
+            ? () async {
+                try {
+                  await ref.read(friendsProvider.notifier)
+                      .cancelRequest(user.friendshipId!);
+                  _search(_searchController.text);
+                  ref.invalidate(sentRequestsProvider);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Запрос отозван')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Ошибка: $e')),
+                    );
+                  }
+                }
+              }
+            : null,
+        icon: const Icon(Icons.close, size: 14, color: AppTheme.warningColor),
+        label: const Text('Отозвать',
+            style: TextStyle(fontSize: 12, color: AppTheme.warningColor)),
       );
     }
     return ElevatedButton(
@@ -272,6 +383,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
             SnackBar(content: Text('Запрос отправлен ${user.username}')),
           );
           _search(_searchController.text); // refresh
+          ref.invalidate(sentRequestsProvider);
         } catch (e) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Ошибка: $e')),
@@ -284,13 +396,6 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
         padding: const EdgeInsets.symmetric(horizontal: 16),
       ),
       child: const Text('Добавить', style: TextStyle(fontSize: 13)),
-    );
-  }
-
-  Future<void> _showFriendProgress(FriendInfo friend) async {
-    showDialog(
-      context: context,
-      builder: (_) => _FriendProgressDialog(friendId: friend.userId),
     );
   }
 }
@@ -317,7 +422,7 @@ class _FriendCard extends StatelessWidget {
           child: Row(
             children: [
               CircleAvatar(
-                radius: 24,
+                radius: 28,
                 backgroundColor: AppTheme.primaryColor,
                 backgroundImage: friend.avatarUrl != null
                     ? NetworkImage(friend.avatarUrl!)
@@ -325,7 +430,7 @@ class _FriendCard extends StatelessWidget {
                 child: friend.avatarUrl == null
                     ? Text(friend.username[0].toUpperCase(),
                         style: const TextStyle(
-                            color: Colors.white, fontSize: 18,
+                            color: Colors.white, fontSize: 20,
                             fontWeight: FontWeight.bold))
                     : null,
               ),
@@ -338,12 +443,21 @@ class _FriendCard extends StatelessWidget {
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 4),
-                    const Text('Нажми чтобы посмотреть прогресс',
-                        style: TextStyle(
-                            fontSize: 12, color: AppTheme.textSecondary)),
+                    Row(
+                      children: [
+                        Icon(Icons.person, size: 14,
+                            color: AppTheme.textSecondary.withOpacity(0.6)),
+                        const SizedBox(width: 4),
+                        const Text('Нажми для просмотра профиля',
+                            style: TextStyle(
+                                fontSize: 12, color: AppTheme.textSecondary)),
+                      ],
+                    ),
                   ],
                 ),
               ),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.person_remove,
                     color: AppTheme.textSecondary, size: 20),
@@ -454,4 +568,6 @@ class _ProgressRow extends StatelessWidget {
     );
   }
 }
+
+
 

@@ -70,12 +70,14 @@ class UserSearchResult {
   final String username;
   final String? avatarUrl;
   final String? friendshipStatus;
+  final int? friendshipId;
 
   UserSearchResult({
     required this.id,
     required this.username,
     this.avatarUrl,
     this.friendshipStatus,
+    this.friendshipId,
   });
 
   factory UserSearchResult.fromJson(Map<String, dynamic> json) {
@@ -84,6 +86,7 @@ class UserSearchResult {
       username: json['username'],
       avatarUrl: json['avatar_url'],
       friendshipStatus: json['friendship_status'],
+      friendshipId: json['friendship_id'],
     );
   }
 }

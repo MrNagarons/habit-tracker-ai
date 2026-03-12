@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -93,6 +94,24 @@ class ApiService {
   Future<User> updateProfile(Map<String, dynamic> data) async {
     final response = await _dio.patch('/auth/me', data: data);
     return User.fromJson(response.data);
+  }
+
+  Future<User> uploadAvatar(File imageFile) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        imageFile.path,
+        filename: imageFile.path.split('/').last,
+      ),
+    });
+    final response = await _dio.post('/auth/me/avatar', data: formData);
+    return User.fromJson(response.data);
+  }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await _dio.post('/auth/change-password', data: {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
   }
 
   // ─── Habits ───
@@ -196,6 +215,14 @@ class ApiService {
     await _dio.patch('/notifications/read-all');
   }
 
+  Future<void> deleteNotification(int id) async {
+    await _dio.delete('/notifications/$id');
+  }
+
+  Future<void> clearAllNotifications() async {
+    await _dio.delete('/notifications/');
+  }
+
   // ─── Friends ───
 
   Future<List<UserSearchResult>> searchUsers(String query) async {
@@ -216,6 +243,17 @@ class ApiService {
 
   Future<void> rejectFriendRequest(int friendshipId) async {
     await _dio.post('/friends/reject/$friendshipId');
+  }
+
+  Future<void> cancelFriendRequest(int friendshipId) async {
+    await _dio.delete('/friends/request/$friendshipId');
+  }
+
+  Future<List<FriendInfo>> getSentRequests() async {
+    final response = await _dio.get('/friends/sent-requests');
+    return (response.data as List)
+        .map((e) => FriendInfo.fromJson(e))
+        .toList();
   }
 
   Future<void> removeFriend(int friendId) async {

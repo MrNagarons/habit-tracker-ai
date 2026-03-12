@@ -237,6 +237,10 @@ class FriendsNotifier extends StateNotifier<AsyncValue<List<FriendInfo>>> {
     await _api.removeFriend(friendId);
     await loadFriends();
   }
+
+  Future<void> cancelRequest(int friendshipId) async {
+    await _api.cancelFriendRequest(friendshipId);
+  }
 }
 
 final friendsProvider =
@@ -248,6 +252,11 @@ final friendsProvider =
 final friendRequestsProvider = FutureProvider<List<FriendInfo>>((ref) async {
   final api = ref.watch(apiServiceProvider);
   return await api.getFriendRequests();
+});
+
+final sentRequestsProvider = FutureProvider<List<FriendInfo>>((ref) async {
+  final api = ref.watch(apiServiceProvider);
+  return await api.getSentRequests();
 });
 
 // ─── Achievements ───
@@ -279,6 +288,19 @@ class NotificationsNotifier extends StateNotifier<AsyncValue<List<NotificationIt
   Future<void> markAllRead() async {
     await _api.markAllNotificationsRead();
     await load();
+  }
+
+  Future<void> deleteNotification(int id) async {
+    await _api.deleteNotification(id);
+    // Update local state immediately
+    state.whenData((items) {
+      state = AsyncValue.data(items.where((n) => n.id != id).toList());
+    });
+  }
+
+  Future<void> clearAll() async {
+    await _api.clearAllNotifications();
+    state = const AsyncValue.data([]);
   }
 }
 
